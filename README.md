@@ -22,7 +22,7 @@ You can install it with the command `gem install romaji`.
 ## Usage
 
 ```
-	$ pdftotext "A Frequency Dictionary of Japanese 2013.pdf" | ./routledge-frequencies > output.json
+$ pdftotext "A Frequency Dictionary of Japanese 2013.pdf" | ./routledge-frequencies > output.json
 ```
 
 ## Output
@@ -30,7 +30,7 @@ You can install it with the command `gem install romaji`.
 The output of this script is a JSON file presenting an array containing every
 lemma entry of the dictionary. Here is a sample of one entry of the array:
 
-```
+```json
 {
 	"lemma": [ "物" ],
 	"pos": "n.",
