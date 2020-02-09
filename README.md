@@ -13,6 +13,12 @@ Kikuo Maekawa. I do not own any right on the original document (in particular
 the example sentences) and hence cannot directly provide the output of this
 script.
 
+## Dependencies
+
+The script depends on the [`romaji`](https://github.com/makimoto/romaji) gem to
+translate romaji notations into katakana.
+You can install it with the command `gem install romaji`.
+
 ## Usage
 
 ```
