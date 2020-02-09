@@ -50,26 +50,26 @@ The `lemma` field contains the different forms of the lemma in the entry.
 The `pos` field contains the associated Part of Speech of the lemma.
 It can take one of the following values:
 
-| Value   | Part Of Speech       |
-|---------|----------------------|
-| adn.    | adnominal            |
-| adv.    | adverb               |
-| aux.    | auxiliary            |
-| conj.   | conjunction          |
-| cp.     | compound             |
-| i-adj.  | i-adjectif           |
-| interj. | interjection         |
-| n.      | noun                 |
-| na-adj. | na-adjectif          |
-| num.    | numeral              |
-| p.      | particle             |
-| p.case  | case particle        |
-| p.conj. | conjunctive particle |
-| p.disc. | discourse particle   |
-| prefix  | prefix               |
-| pron.   | pronoun              |
-| suffix  | suffix               |
-| v.      | verb                 |
+| Value     | Part Of Speech       |
+|-----------|----------------------|
+| `adn.`    | Adnominal            |
+| `adv.`    | Adverb               |
+| `aux.`    | Auxiliary            |
+| `conj.`   | Conjunction          |
+| `cp.`     | Compound             |
+| `i-adj.`  | i-adjectif           |
+| `interj.` | Interjection         |
+| `n.`      | Noun                 |
+| `na-adj.` | na-adjectif          |
+| `num.`    | Numeral              |
+| `p.`      | Particle             |
+| `p.case`  | Case particle        |
+| `p.conj.` | Conjunctive particle |
+| `p.disc.` | Discourse particle   |
+| `prefix`  | Prefix               |
+| `pron.`   | Pronoun              |
+| `suffix`  | Suffix               |
+| `v.`      | Verb                 |
 
 The `forms` field contains the different pronunciations.
 The `definitions` field contains the possibly multiple english definitions of the lemma.
