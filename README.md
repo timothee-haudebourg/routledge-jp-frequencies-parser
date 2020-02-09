@@ -20,6 +20,9 @@ script.
 The script depends on the [`romaji`](https://github.com/makimoto/romaji) gem to
 translate romaji notations into katakana.
 You can install it with the command `gem install romaji`.
+You will also need the [`pdftotext`](http://www.xpdfreader.com/) utility
+provided by the Xpdf software suite [Poppler](https://poppler.freedesktop.org/).
+On most Linux distributions, `pdftotext` is included as part of the `poppler-utils` package.
 
 ## Usage
 
