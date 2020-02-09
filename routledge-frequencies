@@ -1,0 +1,247 @@
+#!/usr/bin/env ruby
+require 'romaji'
+
+# Part of speech
+POS = [
+	'adn.', # adnominal
+	'adv.', # adverb
+	'aux.', # auxiliary
+	'conj.', # conjunction
+	'cp.', # compound
+	'i-adj.', # i-adjectif
+	'interj.', # interjection
+	'n.', # noun
+	'na-adj.', # na-adjectif 
+	'num.', # numeral
+	'p.', # particle
+	'p.case', # case particle
+	'p.conj.', # conjunctive particle
+	'p.disc.', # discourse particle
+	'prefix', # prefix
+	'pron.', # pronoun
+	'suffix', # suffix
+	'v.'  # verb
+]
+
+def to_katakana(str)
+	Romaji.romaji2kana(str.gsub(' ', ''))
+end
+
+class Infos
+	attr_reader :pos
+	attr_reader :forms
+	attr_reader :definitions
+
+	def initialize(pos, forms, definitions)
+		@pos = pos.strip
+		@forms = forms.map { |f| to_katakana(f.strip) }
+		@definitions = definitions.map { |d| d.gsub(' ,', ',').strip }
+	end
+	
+	def to_s
+		"[#{@pos}] (#{@forms.join('; ')}) #{@definitions.join(' / ')}"
+	end
+	
+	def to_json
+		puts "\t\t\"pos\": \"#{@pos}\","
+		puts "\t\t\"forms\": [ #{@forms.map{ |f| '"' + f + '"' }.join(', ')} ],"
+		puts "\t\t\"definitions\": [ #{@definitions.map{ |d| '"' + d + '"'  }.join(', ')} ],"
+	end
+end
+
+# Parse a raw input and separate definitions.
+def string_definitions(raw)
+	lost_frequencies = []
+	
+	sections = raw.split("\n\n").select do |section|
+		is_section = section.count('•') >= 2 && section.split[0].to_i != 0
+		
+		if !is_section && section.include?(' | 0.') && !section.include?("\n") then
+			lost_frequencies << section
+		end
+		
+		is_section
+	end
+
+	lost_frequencies.sort! { |a, b| a[/[0-9]+/].to_i <=> b[/[0-9]+/].to_i }
+	definitions = []
+
+	sections.each do |section|
+		n = section[/[0-9]+/].to_i
+		definitions[n-1] = section
+	end
+
+	definitions.each.with_index do |d, i|
+		if !d.include?(' | ') then
+			f = lost_frequencies.pop
+			d << "\n" + f
+		end
+	end
+
+	return definitions
+end
+
+def is_number(c)
+	c == "0" || c.to_i != 0
+end
+
+def fix_ambiguities(str)
+	str.sub('p. case', 'p.case')
+	   .sub('p. conj.', 'p.conj.')
+	   .sub('p. disc.', 'p.disc.')
+	   .gsub(',', ' , ').gsub(';', ' ; ')
+end
+
+def parse_infos(n, str)
+	state = :form
+	
+	forms = ['']
+	definitions = ['']
+	pos = nil
+	
+	str.sub!('adv', 'adv.') if n == 2629 # EXCEPTION
+	str.sub!('n', 'n.') if n == 4966 # EXCEPTION
+
+	fix_ambiguities(str).split.each do |word|
+		if !word.strip.empty? then
+			case state
+			when :form then
+				if POS.include?(word) then
+					pos = word
+					state = :definition
+				elsif word == ','
+					forms << ''
+				else
+					forms.last << ' '+word
+				end
+			else
+				if word == ';'
+					definitions << ''
+				else
+					definitions.last << ' '+word
+				end
+			end
+		end
+	end
+	
+	if pos.nil? then
+		puts "invalid infos fo #{n}"
+		puts str
+		exit 1
+	end
+	
+	Infos.new(pos, forms, definitions)
+end
+
+# Parse a string definition into actual definition.
+def string_to_def(str)
+	state = :index
+	
+	last_non_space = nil
+	
+	index = ""
+	vocab = ""
+	infos = ""
+	sample_jp = ""
+	sample_en = ""
+	freq = ""
+	dispersion = ""
+	source = ""
+	
+	samples = []
+	
+	str.gsub('.”', '”.').split('').each do |c|
+		c = " " if c == "\n"
+		case state
+		when :index
+			if c == ' ' then
+				state = :vocab unless index.empty?
+			else
+				index << c
+			end
+		when :vocab
+			if c == ' ' && (last_non_space != '，' && last_non_space != ',') then
+				state = :infos unless vocab.empty?
+			elsif c == '）' then
+				vocab << c
+				state = :infos unless vocab.empty?
+			else
+				vocab << c
+			end
+			last_non_space = c unless c == " "
+		when :infos
+			if c == '•' then
+				state = :sample_jp
+			else
+				infos << c
+			end
+		when :sample_jp
+			if c == '—' then
+				state = :sample_en
+			else
+				sample_jp << c unless c == "•"
+			end
+		when :sample_en
+			if c == "•" then
+				samples << {jp: sample_jp, en: sample_en}
+				sample_jp = ""
+				sample_en = ""
+				last_non_space = nil
+				state = :sample_jp
+			elsif is_number(c) && (last_non_space == "." || last_non_space == "!" || last_non_space == "?") then
+				samples << {jp: sample_jp, en: sample_en}
+				state = :freq
+				freq << c
+			else
+				sample_en << c
+				last_non_space = c unless c == " "
+			end
+		when :freq
+			if c == '|' then
+				state = :dispersion
+			else
+				freq << c
+			end
+		when :dispersion
+			if c == '|' then
+				state = :source
+			else
+				dispersion << c
+			end
+		else
+			source << c
+		end
+	end
+	
+	index = index.to_i
+	infos = parse_infos(index, infos)
+	
+	# puts "##{index}: #{vocab}\ninfos: #{infos}"
+	# samples.each do |s|
+	#  	puts "sample (JP): #{s[:jp]}\nsample (EN): #{s[:en]}"
+	# end
+	# puts "freq: #{freq}\ndispersion: #{dispersion}\nsource: #{source}"
+	# puts ""
+	
+	lemma = vocab.gsub('，', ',').split(',').map{ |l| l.strip }
+	
+	puts "\t{"
+	puts "\t\t\"lemma\": [ #{lemma.map{ |l| '"' + l + '"' }.join(', ')} ],"
+	infos.to_json
+	puts "\t\t\"frequency\": #{freq.to_i},"
+	puts "\t\t\"dispersion\": #{dispersion.to_f},"
+	puts "\t\t\"samples\": ["
+	samples.each do |s|
+		puts "\t\t\t[ \"#{s[:jp].strip}\", \"#{s[:en].strip}\" ],"
+	end
+	puts "\t\t]"
+	puts "\t},"
+end
+
+defs = string_definitions(STDIN.read)
+
+puts "["
+defs.each do |d|
+	string_to_def(d)
+end
+puts "]"
