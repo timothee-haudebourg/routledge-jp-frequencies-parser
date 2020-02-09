@@ -4,7 +4,9 @@ This repository provides a small `Ruby` script able to parse the PDF version
 of "A Frequency Dictionary of Japanse" published by Routledge in 2013 and
 transform the contained data into a machine-readable JSON file.
 
-The dictionary is built from two following corpora:
+The dictionary provides the list of the 5000 most commonly used words in the 
+japanese language, along with frequency and dispersion measurments based on the
+analysis of the two following corpora:
 the [Corpus of Spontaneous Japanese (CSJ)](https://pj.ninjal.ac.jp/corpus_center/csj/en/) and
 the [Balanced Corpus of Contemporary Written Japanese (BCCWJ)](https://pj.ninjal.ac.jp/corpus_center/bccwj/en/).
 
