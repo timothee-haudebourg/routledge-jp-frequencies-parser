@@ -1,5 +1,6 @@
 #!/usr/bin/env ruby
 require 'romaji'
+require 'json'
 
 # Part of speech
 POS = [
@@ -27,30 +28,93 @@ def to_katakana(str)
 	Romaji.romaji2kana(str.gsub(' ', ''))
 end
 
-class Infos
-	attr_reader :pos
-	attr_reader :forms
-	attr_reader :definitions
-
-	def initialize(pos, forms, definitions)
-		@pos = pos.strip
-		@forms = forms.map { |f| to_katakana(f.strip) }
-		@definitions = definitions.map { |d| d.gsub(' ,', ',').strip }
-	end
-	
-	def to_s
-		"[#{@pos}] (#{@forms.join('; ')}) #{@definitions.join(' / ')}"
-	end
-	
-	def to_json
-		puts "\t\t\"pos\": \"#{@pos}\","
-		puts "\t\t\"forms\": [ #{@forms.map{ |f| '"' + f + '"' }.join(', ')} ],"
-		puts "\t\t\"definitions\": [ #{@definitions.map{ |d| '"' + d + '"'  }.join(', ')} ],"
+class Array
+	def as_json
+		self.map { |e| e.as_json }
 	end
 end
 
-# Parse a raw input and separate definitions.
-def string_definitions(raw)
+class Definition
+	attr_reader :pos
+	attr_reader :definitions
+
+	def initialize(pos)
+		@pos = pos
+		@definitions = []
+	end
+end
+
+class Header
+	attr_reader :pronunciations
+	attr_reader :definitions
+
+	def initialize(pronunciations, definitions)
+		@pronunciations = pronunciations
+		@definitions = definitions
+	end
+end
+
+class Entry
+	def initialize(index, lemma, forms, freq, dispersion, samples)
+		@index = index
+		@lemma = lemma
+		@forms = forms
+		@frequency = freq
+		@dispersion = dispersion
+		@samples = samples
+	end
+	
+	def as_json()
+		{
+			index: @index,
+			lemma: @lemma,
+			forms: @forms.as_json,
+			frequency: @frequency,
+			dispersion: @dispersion,
+			samples: @samples
+		}
+	end
+end
+
+class Writing
+	attr_reader :writing
+	attr_reader :readings
+
+	def initialize(writing, readings)
+		@writing = writing
+		@readings = readings
+	end
+end
+
+class Form
+	attr_reader :writings
+	attr_reader :definitions
+
+	def initialize(writings, definitions)
+		@writings = writings
+		@definitions = definitions
+	end
+	
+	def as_json
+		writings = {}
+		@writings.each do |w|
+			writings[w.writing] = w.readings
+		end
+		
+		definitions = {}
+		@definitions.each do |d|
+			definitions[d.pos] = d.definitions
+		end
+	
+		{
+			writings: writings,
+			definitions: definitions
+		}
+	end
+end
+
+# Parse a raw input and separate entries.
+def string_entries(raw)
 	lost_frequencies = []
 	
 	sections = raw.split("\n\n").select do |section|
@@ -64,21 +128,21 @@ def string_definitions(raw)
 	end
 
 	lost_frequencies.sort! { |a, b| a[/[0-9]+/].to_i <=> b[/[0-9]+/].to_i }
-	definitions = []
+	entries = []
 
 	sections.each do |section|
 		n = section[/[0-9]+/].to_i
-		definitions[n-1] = section
+		entries[n-1] = section
 	end
 
-	definitions.each.with_index do |d, i|
+	entries.each.with_index do |d, i|
 		if !d.include?(' | ') then
 			f = lost_frequencies.pop
 			d << "\n" + f
 		end
 	end
 
-	return definitions
+	return entries
 end
 
 def is_number(c)
@@ -92,56 +156,86 @@ def fix_ambiguities(str)
 	   .gsub(',', ' , ').gsub(';', ' ; ')
 end
 
-def parse_infos(n, str)
-	state = :form
+def parse_header(n, str)
+	state = :pronunciation
 	
-	forms = ['']
-	definitions = ['']
-	pos = nil
+	pronunciations = []
+	forms = []
 	
-	str.sub!('adv', 'adv.') if n == 2629 # EXCEPTION
-	str.sub!('n', 'n.') if n == 4966 # EXCEPTION
+	current_pronunciation = ''
+	current_form = nil
+	current_definition = ''
+	
+	str.sub!(' adv ', ' adv. ') # if n == 2629 # EXCEPTION
+	str.sub!(' n ', ' n. ') if n == 4966 # EXCEPTION
+	str.sub!(' na-adj ', ' na-adj. ')
 
 	fix_ambiguities(str).split.each do |word|
 		if !word.strip.empty? then
 			case state
-			when :form then
+			when :pronunciation then
 				if POS.include?(word) then
-					pos = word
+					current_pronunciation.strip!
+					pronunciations << current_pronunciation unless current_pronunciation.empty?
+					current_pronunciation = ''
+					
+					current_form = Definition.new(word)
 					state = :definition
 				elsif word == ','
-					forms << ''
+					current_pronunciation.strip!
+					pronunciations << current_pronunciation unless current_pronunciation.empty?
+					current_pronunciation = ''
 				else
-					forms.last << ' '+word
+					current_pronunciation += ' '+word
 				end
 			else
-				if word == ';'
-					definitions << ''
+				if POS.include?(word) then
+					current_definition.strip!
+					current_form.definitions << current_definition unless current_definition.empty?
+					current_definition = ''
+					
+					forms << current_form
+					current_form = Definition.new(word)
+				elsif word == ';'
+					current_definition.strip!
+					current_form.definitions << current_definition unless current_definition.empty?
+					current_definition = ''
 				else
-					definitions.last << ' '+word
+					current_definition += ' '+word
 				end
 			end
 		end
 	end
 	
-	if pos.nil? then
-		puts "invalid infos fo #{n}"
-		puts str
+	current_definition.strip!
+	current_form.definitions << current_definition unless current_definition.empty?
+	forms << current_form unless current_form.nil?
+	
+	if forms.empty? then
+		STDERR.puts "invalid header for #{n}"
+		STDERR.puts str
 		exit 1
 	end
 	
-	Infos.new(pos, forms, definitions)
+	# STDERR.puts "maybe secondary pos in #{n}: #{forms}" if forms.join(',').include?('.')
+	
+	Header.new(pronunciations, forms)
 end
 
-# Parse a string definition into actual definition.
-def string_to_def(str)
+def is_romaji(c)
+	i = c.ord
+	return (i >= 0x61 && i <= 0x7a)
+end
+
+# Parse a string entry into actual entry.
+def string_to_entry(str)
 	state = :index
 	
 	last_non_space = nil
 	
 	index = ""
 	vocab = ""
-	infos = ""
+	header = ""
 	sample_jp = ""
 	sample_en = ""
 	freq = ""
@@ -160,20 +254,18 @@ def string_to_def(str)
 				index << c
 			end
 		when :vocab
-			if c == ' ' && (last_non_space != '，' && last_non_space != ',') then
-				state = :infos unless vocab.empty?
-			elsif c == '）' then
-				vocab << c
-				state = :infos unless vocab.empty?
+			if is_romaji(c) then
+				state = :header unless vocab.empty?
+				header << c
 			else
 				vocab << c
 			end
 			last_non_space = c unless c == " "
-		when :infos
+		when :header
 			if c == '•' then
 				state = :sample_jp
 			else
-				infos << c
+				header << c
 			end
 		when :sample_jp
 			if c == '—' then
@@ -214,34 +306,71 @@ def string_to_def(str)
 	end
 	
 	index = index.to_i
-	infos = parse_infos(index, infos)
-	
-	# puts "##{index}: #{vocab}\ninfos: #{infos}"
-	# samples.each do |s|
-	#  	puts "sample (JP): #{s[:jp]}\nsample (EN): #{s[:en]}"
-	# end
-	# puts "freq: #{freq}\ndispersion: #{dispersion}\nsource: #{source}"
-	# puts ""
-	
 	lemma = vocab.gsub('，', ',').split(',').map{ |l| l.strip }
+	header = parse_header(index, header)
 	
-	puts "\t{"
-	puts "\t\t\"lemma\": [ #{lemma.map{ |l| '"' + l + '"' }.join(', ')} ],"
-	infos.to_json
-	puts "\t\t\"frequency\": #{freq.to_i},"
-	puts "\t\t\"dispersion\": #{dispersion.to_f},"
-	puts "\t\t\"samples\": ["
-	samples.each do |s|
-		puts "\t\t\t[ \"#{s[:jp].strip}\", \"#{s[:en].strip}\" ],"
+	
+	writings = []
+	if lemma.size == header.pronunciations.size then
+		writings = lemma.map.with_index do |l, i|
+			Writing.new(l, [header.pronunciations[i]])
+		end
+	else
+		if lemma.size == 1 || header.pronunciations.size == 1 then
+			writings = lemma.map.with_index do |l, i|
+				Writing.new(l, header.pronunciations)
+			end
+		else
+			# EXCEPTIONS
+			if index == 16 then
+				writings = [
+					Writing.new(lemma[0], header.pronunciations[0..1]),
+					Writing.new(lemma[1], [header.pronunciations[2]])
+				]
+			elsif index == 21 then
+				writings = [
+					Writing.new(lemma[0], [header.pronunciations[0]]),
+					Writing.new(lemma[1], [header.pronunciations[1]]),
+					Writing.new(lemma[2], [header.pronunciations[1]])
+				]
+			else
+				STDERR.puts "unable to match a form to its pronunciations!"
+				exit 1
+			end
+		end
 	end
-	puts "\t\t]"
-	puts "\t},"
+	
+	forms = [Form.new(writings, header.definitions)]
+	
+	entry = Entry.new(index, lemma, forms, freq.to_i, dispersion.to_f, samples)
+	
+	if lemma[0].include?('（') then
+		if lemma[0].include?('（する）') then
+			if lemma.size == 1 then
+				if header.pronunciations[0].include?('(suru)') then
+					#
+				else
+					STDERR.puts JSON.pretty_generate(entry.as_json)
+				end
+			else
+				STDERR.puts JSON.pretty_generate(entry.as_json)
+			end
+		else
+			STDERR.puts JSON.pretty_generate(entry.as_json)
+		end
+	end
+	
+	if header.definitions.size > 1 && lemma.size > 1 then
+		STDERR.puts JSON.pretty_generate(entry.as_json)
+	end
+	
+	return entry
 end
 
-defs = string_definitions(STDIN.read)
+entries = string_entries(STDIN.read)
 
-puts "["
-defs.each do |d|
-	string_to_def(d)
+entries = entries.map do |d|
+	string_to_entry(d)
 end
-puts "]"
+
+puts JSON.pretty_generate(entries.map { |d| d.as_json })
