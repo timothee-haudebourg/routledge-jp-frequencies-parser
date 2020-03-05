@@ -56,6 +56,12 @@ end
 
 class Entry
 	def initialize(index, lemma, forms, freq, dispersion, samples)
+		if lemma[0].include?('（お）') then
+			STDERR.puts ("INDEX:"+index.to_s)
+			lemma[0] = lemma[0].sub('（お）', '')
+			lemma << 'お'+lemma[0]
+		end
+	
 		@index = index
 		@lemma = lemma
 		@forms = forms
@@ -77,8 +83,8 @@ class Entry
 end
 
 class Writing
-	attr_reader :writing
-	attr_reader :readings
+	attr_accessor :writing
+	attr_accessor :readings
 
 	def initialize(writing, readings)
 		@writing = writing
@@ -91,7 +97,17 @@ class Form
 	attr_reader :definitions
 
 	def initialize(writings, definitions)
-		@writings = writings
+		@writings = []
+	
+		writings.each do |w|
+			@writings << w
+			if w.writing.include?('（お）') then
+				w.writing = w.writing.sub('（お）', '')
+				w.readings.map!{ |r| r.sub('(o)-', '').sub('(o)', '') }
+				@writings << Writing.new('お'+w.writing, w.readings.map{ |r| 'o'+r })
+			end
+		end
+
 		@definitions = definitions
 	end
 	
@@ -196,6 +212,8 @@ def parse_header(n, str)
 					
 					forms << current_form
 					current_form = Definition.new(word)
+				elsif word == ',' && current_definition.empty? 
+					# skip it
 				elsif word == ';'
 					current_definition.strip!
 					current_form.definitions << current_definition unless current_definition.empty?
@@ -254,7 +272,7 @@ def string_to_entry(str)
 				index << c
 			end
 		when :vocab
-			if is_romaji(c) then
+			if is_romaji(c) || (c == '(' && (vocab[-1] == ' ' || vocab[-1] == '）')) then
 				state = :header unless vocab.empty?
 				header << c
 			else
@@ -344,7 +362,7 @@ def string_to_entry(str)
 	
 	entry = Entry.new(index, lemma, forms, freq.to_i, dispersion.to_f, samples)
 	
-	if lemma[0].include?('（') then
+	if lemma[0].include?('（') || lemma[0].include?('（') then
 		if lemma[0].include?('（する）') then
 			if lemma.size == 1 then
 				if header.pronunciations[0].include?('(suru)') then
